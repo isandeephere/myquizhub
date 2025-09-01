@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Series Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .loader {
+            border: 4px solid #e5e7eb;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 40px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="flex justify-center items-start min-h-screen p-4 sm:p-6 lg:p-8">
+
+    <div class="container mx-auto max-w-5xl">
+        
+        <div id="test-series-view">
+            <header class="text-center mb-10">
+                <h1 class="text-4xl md:text-5xl font-extrabold text-gray-800">Test Series Hub</h1>
+                <p class="mt-3 text-lg text-gray-600">Browse all conducted quizzes and view their results.</p>
+                 <div class="mt-4 text-center p-3 rounded-lg bg-blue-50 border border-blue-200 max-w-md mx-auto">
+                    <p class="text-gray-700 text-sm">Your App ID (for reference):</p>
+                    <p id="appIdDisplay" class="font-mono bg-gray-100 p-2 rounded mt-2 text-xs text-gray-800 break-all">Loading...</p>
+                </div>
+            </header>
+
+            <main id="test-series-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            </main>
+        </div>
+
+        <div id="results-view" class="hidden">
+             <header class="mb-8">
+                <button id="back-button" class="flex items-center text-blue-600 hover:text-blue-800 font-semibold transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                    </svg>
+                    Back to All Tests
+                </button>
+                <h2 id="results-title" class="text-3xl md:text-4xl font-extrabold text-gray-800 text-center mt-4"></h2>
+            </header>
+
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50">
+                            <tr class="border-b border-gray-200">
+                                <th class="p-4 font-bold text-gray-600">Rank</th>
+                                <th class="p-4 font-bold text-gray-600">Name</th>
+                                <th class="p-4 font-bold text-gray-600">Score</th>
+                                <th class="p-4 font-bold text-gray-600">Date & Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "your-api-key", authDomain: "your-auth-domain", projectId: "your-project-id" };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const testSeriesView = document.getElementById('test-series-view');
+        const resultsView = document.getElementById('results-view');
+        const testSeriesContainer = document.getElementById('test-series-container');
+        const leaderboardBody = document.getElementById('leaderboardBody');
+        const resultsTitle = document.getElementById('results-title');
+        const backButton = document.getElementById('back-button');
+        const appIdDisplay = document.getElementById('appIdDisplay');
+
+        let unsubscribeResults = null;
+
+        function showLoader(container) {
+            container.innerHTML = '<div class="loader col-span-full"></div>';
+        }
+
+        function renderTestSeriesList() {
+            showLoader(testSeriesContainer);
+            const testSeriesCollection = collection(db, `artifacts/${appId}/public/data/quizResults`);
+
+            onSnapshot(testSeriesCollection, (snapshot) => {
+                if (snapshot.empty) {
+                    testSeriesContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">No test series found yet.</p>';
+                    return;
+                }
+
+                testSeriesContainer.innerHTML = '';
+                const quizzes = {};
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const quizId = data.quizId || 'general';
+                    const quizTitle = data.quizTitle || 'General Knowledge Quiz';
+
+                    if (!quizzes[quizId]) {
+                        quizzes[quizId] = { title: quizTitle, id: quizId, participantCount: 0 };
+                    }
+                    quizzes[quizId].participantCount++;
+                });
+
+                Object.values(quizzes).forEach(quiz => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-white p-6 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer';
+                    card.innerHTML = `
+                        <h3 class="text-xl font-bold text-gray-800">${quiz.title}</h3>
+                        <p class="text-gray-500 mt-2">${quiz.participantCount} participants</p>
+                    `;
+                    card.addEventListener('click', () => renderResultsView(quiz.id, quiz.title));
+                    testSeriesContainer.appendChild(card);
+                });
+
+            }, (error) => {
+                console.error("Error fetching test series:", error);
+                testSeriesContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Could not load test series.</p>';
+            });
+        }
+        
+        function renderResultsView(quizId, quizTitle) {
+            testSeriesView.classList.add('hidden');
+            resultsView.classList.remove('hidden');
+            resultsTitle.textContent = quizTitle;
+            leaderboardBody.innerHTML = '<tr><td colspan="4"><div class="loader"></div></td></tr>';
+            
+            if (unsubscribeResults) unsubscribeResults();
+
+            const resultsCollection = collection(db, `artifacts/${appId}/public/data/quizResults`);
+            const q = query(resultsCollection, where("quizId", "==", quizId), orderBy('score', 'desc'), orderBy('timestamp', 'asc'));
+
+            unsubscribeResults = onSnapshot(q, (snapshot) => {
+                if (snapshot.empty) {
+                    leaderboardBody.innerHTML = '<tr><td colspan="4" class="text-center p-4">No results found for this test.</td></tr>';
+                    return;
+                }
+                
+                let leaderboardHTML = '';
+                let rank = 1;
+                snapshot.forEach(doc => {
+                    const result = doc.data();
+                    const date = result.timestamp ? result.timestamp.toDate().toLocaleString() : 'N/A';
+                    leaderboardHTML += `
+                        <tr class="border-b border-gray-100">
+                            <td class="p-4 font-bold text-gray-700">${rank++}</td>
+                            <td class="p-4 text-gray-800">${result.name}</td>
+                            <td class="p-4 text-gray-600">${result.score} / ${result.totalQuestions}</td>
+                            <td class="p-4 text-sm text-gray-500">${date}</td>
+                        </tr>`;
+                });
+                leaderboardBody.innerHTML = leaderboardHTML;
+            }, (error) => {
+                console.error(`Error fetching results for quiz ${quizId}:`, error);
+                leaderboardBody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-red-500">Could not load results.</td></tr>';
+            });
+        }
+
+        backButton.addEventListener('click', () => {
+            resultsView.classList.add('hidden');
+            testSeriesView.classList.remove('hidden');
+            if (unsubscribeResults) unsubscribeResults();
+        });
+
+        async function initialize() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                appIdDisplay.textContent = appId;
+                renderTestSeriesList();
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                document.body.innerHTML = '<p class="text-red-500 text-center p-8">Authentication Failed. Cannot load app.</p>';
+            }
+        }
+
+        initialize();
+
+    </script>
+</body>
+</html>
+
